@@ -3,7 +3,16 @@ type UintArray = Uint8Array | Uint16Array | Uint32Array
 type IntArray = Int8Array | Int16Array | Int32Array
 type FloatArray = Float32Array | Float64Array
 
-export class Tensor {
+
+class Tensor {
+  static dimReduceOffset(
+    index: number,
+    size: number,
+    stride: number
+  ): number {
+    return size * stride * Math.floor( index / stride ) + index % stride
+  }
+
   dims: UintArray
   strides: Uint32Array
   data: FloatArray
@@ -91,7 +100,7 @@ export class Tensor {
   dimReduce (
     dim: number,
     keepdim: boolean,
-    func: (Float64Array) => number
+    reducer: (Float64Array) => number
   ): Tensor {
     let dims = this.dims
     let data = this.data
@@ -127,21 +136,18 @@ export class Tensor {
       outSize *= dims[i]
     }
 
-    let output = new Uint32Array(outSize)
-
-    let offset = 0
+    let output = new Float64Array(outSize)
 
     for (let o = 0; o < outSize; o++) {
-
       let temp = Array(size)
+
+      let offset = Tensor.dimReduceOffset(o, size, stride)
 
       for (let i = 0; i < size; i++) {
         temp[i] = data[offset + i * stride]
       }
 
-      output[o] = func(temp)
-
-      offset += stride == 1 ? size : 1
+      output[o] = temp.reduce(reducer)
     }
 
     return new Tensor(outDims, output)
