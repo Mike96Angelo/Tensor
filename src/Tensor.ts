@@ -7,6 +7,7 @@ type InteratorFunc = (val: number, index: number, arr: FloatArray) => void
 type DimInteratorFunc = (values: FloatArray, index: number, len: number) => void
 type ReducerFunc = (acc: number, val: number, index: number, arr: FloatArray) => number
 type MapFunc = (val: number, index: number, arr: FloatArray) => number
+type MapReducerFunc = (val: number, len: number) => number
 
 
 class Tensor {
@@ -177,7 +178,8 @@ class Tensor {
   dimReduce (
     dim: number,
     keepdim: boolean,
-    reducer: ReducerFunc
+    reducer: ReducerFunc,
+    mapper: MapReducerFunc = (v, l) => v
   ): Tensor {
     let dims = this.dims
     let data = this.data
@@ -210,7 +212,7 @@ class Tensor {
     let output = new Float64Array(outSize)
 
     this._dimForEach(outSize, values, stride, (vals, index, len) => {
-      output[index] = vals.reduce(reducer)
+      output[index] = mapper(vals.reduce(reducer), values)
     })
 
     return new Tensor(outDims, output)
