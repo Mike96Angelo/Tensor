@@ -3,16 +3,30 @@ type UintArray = Uint8Array | Uint16Array | Uint32Array
 type IntArray = Int8Array | Int16Array | Int32Array
 type FloatArray = Float32Array | Float64Array
 
+type InteratorFunc = (val: number, index: number, arr: FloatArray) => void
+type DimInteratorFunc = (values: FloatArray, index: number, len: number) => void
 type ReducerFunc = (acc: number, val: number, index: number, arr: FloatArray) => number
+type MapFunc = (val: number, index: number, arr: FloatArray) => number
 
 
 class Tensor {
   static dimReduceOffset(
     index: number,
-    size: number,
+    values: number,
     stride: number
   ): number {
-    return size * stride * Math.floor( index / stride ) + index % stride
+    return values * stride * Math.floor( index / stride ) + index % stride
+  }
+
+  static assertDim(
+    dim: number,
+    len: number
+  ): void {
+    if (dim < 0) {
+      throw new Error(`Cannot reduce negative dimension`)
+    } else if (dim >= len) {
+      throw new Error(`Cannot reduce dimension ${dim} when only ${len} dimensions`)
+    }
   }
 
   dims: UintArray
@@ -93,6 +107,67 @@ class Tensor {
     return arr
   }
 
+  map(
+    mapper: MapFunc
+  ): Tensor {
+    let output = this.data.map(mapper)
+
+    return new Tensor(this.dims, output)
+  }
+
+  forEach(
+    reducer: InteratorFunc
+  ): void {
+    this.data.forEach(reducer)
+  }
+
+  dimForEach(
+    dim: number,
+    iterator: DimInteratorFunc
+  ): void {
+    let dims = this.dims
+    let data = this.data
+    let stride = this.strides[dim]
+    let values = dims[dim]
+
+    let len = dims.length
+
+    Tensor.assertDim(dim, len)
+
+    let interations = 1
+
+    for (let i = 0; i < len; i++) {
+      if (i == dim) {
+        continue
+      }
+
+      interations *= dims[i]
+    }
+
+    this._dimForEach(interations, values, stride, iterator)
+  }
+
+  _dimForEach(
+    interations: number,
+    values: number,
+    stride: number,
+    iterator: DimInteratorFunc
+  ): void {
+    let data = this.data
+
+    for (let i = 0; i < interations; i++) {
+      let temp = new Float64Array(values)
+
+      let offset = Tensor.dimReduceOffset(i, values, stride)
+
+      for (let v = 0; v < values; v++) {
+        temp[v] = data[offset + v * stride]
+      }
+
+      iterator(temp, i, interations)
+    }
+  }
+
   reduce(
     reducer: ReducerFunc
   ): number {
@@ -107,17 +182,11 @@ class Tensor {
     let dims = this.dims
     let data = this.data
     let stride = this.strides[dim]
-    let size = dims[dim]
+    let values = dims[dim]
 
     let len = dims.length
 
-    if (dim < 0) {
-      throw new Error(`Cannot reduce negative dimension`)
-    }
-
-    if (dim >= len) {
-      throw new Error(`Cannot reduce dimension ${dim} when only ${len} dimensions`)
-    }
+    Tensor.assertDim(dim, len)
 
     let outSize = 1
     let outDims = keepdim ? new Uint32Array(len) : new Uint32Array(len - 1)
@@ -140,17 +209,9 @@ class Tensor {
 
     let output = new Float64Array(outSize)
 
-    for (let o = 0; o < outSize; o++) {
-      let temp = new Float64Array(size)
-
-      let offset = Tensor.dimReduceOffset(o, size, stride)
-
-      for (let i = 0; i < size; i++) {
-        temp[i] = data[offset + i * stride]
-      }
-
-      output[o] = temp.reduce(reducer)
-    }
+    this._dimForEach(outSize, values, stride, (vals, index, len) => {
+      output[index] = vals.reduce(reducer)
+    })
 
     return new Tensor(outDims, output)
   }
